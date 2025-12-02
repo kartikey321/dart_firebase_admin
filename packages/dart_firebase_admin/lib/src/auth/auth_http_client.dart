@@ -44,8 +44,6 @@ class AuthHttpClient {
     return app.client;
   }
 
-  // TODO handle tenants
-
   /// Builds the parent resource path for project-level operations.
   String buildParent(String projectId) {
     return 'projects/$projectId';
@@ -59,6 +57,11 @@ class AuthHttpClient {
   /// Builds the parent path for SAML config operations.
   String buildSamlParent(String projectId, String parentId) {
     return 'projects/$projectId/inboundSamlConfigs/$parentId';
+  }
+
+  /// Builds the resource path for a specific tenant.
+  String buildTenantParent(String projectId, String tenantId) {
+    return 'projects/$projectId/tenants/$tenantId';
   }
 
   Future<auth1.GoogleCloudIdentitytoolkitV1GetOobCodeResponse> getOobCode(
@@ -305,65 +308,7 @@ class AuthHttpClient {
     });
   }
 
-  Future<R> _run<R>(Future<R> Function(googleapis_auth.AuthClient client) fn) {
-    return _authGuard(() async {
-      // Use the cached client (created once based on emulator configuration)
-      final client = await _client;
-      return fn(client);
-    });
-  }
-
-  Future<R> v1<R>(
-    Future<R> Function(auth1.IdentityToolkitApi client, String projectId) fn,
-  ) async {
-    // TODO(demolaf): this can move into _run instead
-    final client = await this.client;
-    final projectId = await client.getProjectId(
-      projectIdOverride: app.options.projectId,
-      environment: Zone.current[envSymbol] as Map<String, String>?,
-    );
-    return _run(
-      (client) => fn(
-        auth1.IdentityToolkitApi(client, rootUrl: _authApiHost.toString()),
-        projectId,
-      ),
-    );
-  }
-
-  Future<R> v2<R>(
-    Future<R> Function(auth2.IdentityToolkitApi client, String projectId) fn,
-  ) async {
-    final client = await this.client;
-    final projectId = await client.getProjectId(
-      projectIdOverride: app.options.projectId,
-      environment: Zone.current[envSymbol] as Map<String, String>?,
-    );
-    return _run(
-      (client) => fn(
-        auth2.IdentityToolkitApi(client, rootUrl: _authApiHost.toString()),
-        projectId,
-      ),
-    );
-  }
-
-  Future<R> v3<R>(
-    Future<R> Function(auth3.IdentityToolkitApi client, String projectId) fn,
-  ) async {
-    final client = await this.client;
-    final projectId = await client.getProjectId(
-      projectIdOverride: app.options.projectId,
-      environment: Zone.current[envSymbol] as Map<String, String>?,
-    );
-    return _run(
-      (client) => fn(
-        auth3.IdentityToolkitApi(client, rootUrl: _authApiHost.toString()),
-        projectId,
-      ),
-    );
-  }
-
   // Tenant management methods
-
   Future<auth2.GoogleCloudIdentitytoolkitAdminV2Tenant> getTenant(
     String tenantId,
   ) {
@@ -376,7 +321,7 @@ class AuthHttpClient {
       }
 
       final response = await client.projects.tenants.get(
-        'projects/$projectId/tenants/$tenantId',
+        buildTenantParent(projectId, tenantId),
       );
 
       if (response.name == null || response.name!.isEmpty) {
@@ -394,7 +339,7 @@ class AuthHttpClient {
   listTenants({required int maxResults, String? pageToken}) {
     return v2((client, projectId) async {
       final response = await client.projects.tenants.list(
-        'projects/$projectId',
+        buildParent(projectId),
         pageSize: maxResults,
         pageToken: pageToken,
       );
@@ -413,7 +358,7 @@ class AuthHttpClient {
       }
 
       return client.projects.tenants.delete(
-        'projects/$projectId/tenants/$tenantId',
+        buildTenantParent(projectId, tenantId),
       );
     });
   }
@@ -424,7 +369,7 @@ class AuthHttpClient {
     return v2((client, projectId) async {
       final response = await client.projects.tenants.create(
         request,
-        'projects/$projectId',
+        buildParent(projectId),
       );
 
       if (response.name == null || response.name!.isEmpty) {
@@ -450,7 +395,7 @@ class AuthHttpClient {
         );
       }
 
-      final name = 'projects/$projectId/tenants/$tenantId';
+      final name = buildTenantParent(projectId, tenantId);
       final updateMask = request.toJson().keys.join(',');
 
       final response = await client.projects.tenants.patch(
@@ -469,6 +414,47 @@ class AuthHttpClient {
       return response;
     });
   }
+
+  Future<R> _run<R>(
+    Future<R> Function(googleapis_auth.AuthClient client, String projectId) fn,
+  ) {
+    return _authGuard(() async {
+      // Use the cached client (created once based on emulator configuration)
+      final client = await _client;
+      final projectId = await client.getProjectId(
+        projectIdOverride: app.options.projectId,
+        environment: Zone.current[envSymbol] as Map<String, String>?,
+      );
+      return fn(client, projectId);
+    });
+  }
+
+  Future<R> v1<R>(
+    Future<R> Function(auth1.IdentityToolkitApi client, String projectId) fn,
+  ) => _run(
+    (client, projectId) => fn(
+      auth1.IdentityToolkitApi(client, rootUrl: _authApiHost.toString()),
+      projectId,
+    ),
+  );
+
+  Future<R> v2<R>(
+    Future<R> Function(auth2.IdentityToolkitApi client, String projectId) fn,
+  ) => _run(
+    (client, projectId) => fn(
+      auth2.IdentityToolkitApi(client, rootUrl: _authApiHost.toString()),
+      projectId,
+    ),
+  );
+
+  Future<R> v3<R>(
+    Future<R> Function(auth3.IdentityToolkitApi client, String projectId) fn,
+  ) => _run(
+    (client, projectId) => fn(
+      auth3.IdentityToolkitApi(client, rootUrl: _authApiHost.toString()),
+      projectId,
+    ),
+  );
 }
 
 /// Tenant-aware HTTP client that builds tenant-specific resource paths.
