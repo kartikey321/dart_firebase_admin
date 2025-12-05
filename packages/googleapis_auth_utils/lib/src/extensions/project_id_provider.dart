@@ -6,7 +6,7 @@ class FileSystem {
 
   bool exists(String path) => File(path).existsSync();
 
-  Future<String> readAsString(String path) => File(path).readAsString();
+  String readAsString(String path) => File(path).readAsStringSync();
 }
 
 @internal
@@ -141,14 +141,24 @@ class ProjectIdProvider {
     );
   }
 
+  /// Gets project ID from a service account credentials file.
+  ///
+  /// Uses [GoogleCredential] to parse the credentials file and extract
+  /// the project_id. Returns null if the file doesn't exist, is invalid,
+  /// or doesn't contain a non-empty project_id.
   Future<String?> _getProjectIdFromCredentialsFile(String path) async {
     try {
       if (!_fileSystem.exists(path)) return null;
-      final contents = await _fileSystem.readAsString(path);
-      final json = jsonDecode(contents) as Map<String, dynamic>;
-      final projectId = json['project_id'] as String?;
+
+      final credential = GoogleServiceAccountCredential.fromFile(
+        File(path),
+        fileSystem: _fileSystem,
+      );
+      final projectId = credential.projectId;
+      // Return null if project_id is missing or empty
       return projectId?.isNotEmpty ?? false ? projectId : null;
     } catch (_) {
+      // Return null for any parsing errors - allows lenient handling
       return null;
     }
   }
