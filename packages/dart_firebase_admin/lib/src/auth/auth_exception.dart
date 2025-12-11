@@ -19,6 +19,8 @@ class FirebaseAuthAdminException extends FirebaseAdminException
     String? customMessage;
     if (colonSeparator != -1) {
       customMessage = serverErrorCode.substring(colonSeparator + 1).trim();
+      // Treat empty string as null (matches Node.js behavior with || operator)
+      if (customMessage.isEmpty) customMessage = null;
       serverErrorCode = serverErrorCode.substring(0, colonSeparator).trim();
     }
     // If not found, default to internal error.
@@ -66,8 +68,8 @@ const authServerToClientCode = {
   'INVALID_CONFIG_ID': AuthClientErrorCode.invalidProviderId,
   // ActionCodeSettings missing continue URL.
   'INVALID_CONTINUE_URI': AuthClientErrorCode.invalidContinueUri,
-  // Dynamic link domain in provided ActionCodeSettings is not authorized.
-  'INVALID_DYNAMIC_LINK_DOMAIN': AuthClientErrorCode.invalidDynamicLinkDomain,
+  // Hosting link domain in provided ActionCodeSettings is not owned by the current project.
+  'INVALID_HOSTING_LINK_DOMAIN': AuthClientErrorCode.invalidHostingLinkDomain,
   // uploadAccount provides an email that already exists.
   'DUPLICATE_EMAIL': AuthClientErrorCode.emailAlreadyExists,
   // uploadAccount provides a localId that already exists.
@@ -105,6 +107,8 @@ const authServerToClientCode = {
   'INVALID_PROJECT_ID': AuthClientErrorCode.invalidProjectId,
   // Invalid provider ID.
   'INVALID_PROVIDER_ID': AuthClientErrorCode.invalidProviderId,
+  // Invalid service account.
+  'INVALID_SERVICE_ACCOUNT': AuthClientErrorCode.invalidServiceAccount,
   // Invalid testing phone number.
   'INVALID_TESTING_PHONE_NUMBER': AuthClientErrorCode.invalidTestingPhoneNumber,
   // Invalid tenant type.
@@ -264,12 +268,6 @@ enum AuthClientErrorCode {
     code: 'invalid-display-name',
     message: 'The displayName field must be a valid string.',
   ),
-  invalidDynamicLinkDomain(
-    code: 'invalid-dynamic-link-domain',
-    message:
-        'The provided dynamic link domain is not configured or authorized '
-        'for the current project.',
-  ),
   invalidEmailVerified(
     code: 'invalid-email-verified',
     message: 'The emailVerified field must be a boolean.',
@@ -326,6 +324,12 @@ enum AuthClientErrorCode {
     code: 'invalid-hash-salt-separator',
     message:
         'The hashing algorithm salt separator field must be a valid byte buffer.',
+  ),
+  invalidHostingLinkDomain(
+    code: 'invalid-hosting-link-domain',
+    message:
+        'The provided hosting link domain is not configured or authorized '
+        'for the current project.',
   ),
   invalidLastSignInTime(
     code: 'invalid-last-sign-in-time',
@@ -393,6 +397,10 @@ enum AuthClientErrorCode {
     message:
         'The session cookie duration must be a valid number in milliseconds '
         'between 5 minutes and 2 weeks.',
+  ),
+  invalidServiceAccount(
+    code: 'invalid-service-account',
+    message: 'Invalid service account.',
   ),
   invalidTenantId(
     code: 'invalid-tenant-id',
