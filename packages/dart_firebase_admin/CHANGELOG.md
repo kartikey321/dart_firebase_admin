@@ -1,3 +1,10 @@
+## 0.4.2 - 2025-12-13
+
+- **FEAT**: Added `Transaction.getQuery()` method to enable query execution within transactions with pessimistic locking
+- **FEAT**: Queries can now participate in Firestore transactions with full ACID guarantees
+- **FEAT**: Added support for lazy transaction initialization with queries
+- **TEST**: Added 10 comprehensive tests for query transaction scenarios
+
 ## 0.4.1 - 2025-03-21
 
 - Bump intl to `0.20.0`
