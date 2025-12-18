@@ -1,16 +1,23 @@
+// Firebase Tenant Integration Tests - Emulator Safe
+//
+// These tests work with Firebase Auth Emulator and test basic Tenant operations.
+// For production-only tests (TOTP/MFA, tenant auth operations), see tenant_integration_prod_test.dart
+//
+// Run with:
+//   FIREBASE_AUTH_EMULATOR_HOST=localhost:9099 dart test test/auth/tenant_integration_test.dart
+
 import 'package:dart_firebase_admin/auth.dart';
 import 'package:dart_firebase_admin/src/app.dart';
 import 'package:test/test.dart';
 
-import '../google_cloud_firestore/util/helpers.dart';
+import 'util/helpers.dart';
 
 void main() {
   late Auth auth;
   late TenantManager tenantManager;
 
   setUp(() {
-    final sdk = createApp(tearDown: () => cleanup(auth));
-    auth = Auth(sdk);
+    auth = createAuthForTest();
     tenantManager = auth.tenantManager;
   });
 
@@ -79,15 +86,12 @@ void main() {
         // Note: The Firebase Auth Emulator may not support all advanced configuration
         // fields. These assertions are optional and will pass if the emulator
         // doesn't return these fields.
-        // In production, these fields should be properly supported.
         if (tenant.testPhoneNumbers != null) {
           expect(tenant.testPhoneNumbers!['+11234567890'], equals('123456'));
         }
         if (tenant.smsRegionConfig != null) {
           expect(tenant.smsRegionConfig, isA<AllowByDefaultSmsRegionConfig>());
         }
-        // recaptchaConfig, passwordPolicyConfig, and emailPrivacyConfig
-        // may not be supported by the emulator
       });
 
       test('throws on invalid display name', () async {
@@ -304,83 +308,6 @@ void main() {
         expect(tenantAuth.tenantId, equals(tenant.tenantId));
       });
 
-      test('tenant auth can create users', () async {
-        // Note: Firebase Auth Emulator does not fully support tenant-scoped
-        // user operations. Skip this test for emulator.
-        // See: https://firebase.google.com/docs/emulator-suite/connect_auth
-        if (Environment.isAuthEmulatorEnabled()) {
-          return;
-        }
-
-        final tenant = await tenantManager.createTenant(
-          CreateTenantRequest(
-            displayName: 'User Creation Test',
-            emailSignInConfig: EmailSignInProviderConfig(
-              enabled: true,
-              passwordRequired: false,
-            ),
-          ),
-        );
-
-        final tenantAuth = tenantManager.authForTenant(tenant.tenantId);
-
-        // Use unique email to avoid conflicts with previous test runs
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final email = 'tenant-user-$timestamp@example.com';
-
-        final user = await tenantAuth.createUser(CreateRequest(email: email));
-
-        expect(user.uid, isNotEmpty);
-        expect(user.email, equals(email));
-
-        // Cleanup: Delete the user
-        await tenantAuth.deleteUser(user.uid);
-      });
-
-      test('tenant auth can list users', () async {
-        // Note: Firebase Auth Emulator does not fully support tenant-scoped
-        // user operations. Skip this test for emulator.
-        // See: https://firebase.google.com/docs/emulator-suite/connect_auth
-        if (Environment.isAuthEmulatorEnabled()) {
-          return;
-        }
-
-        final tenant = await tenantManager.createTenant(
-          CreateTenantRequest(
-            displayName: 'List Users Test',
-            emailSignInConfig: EmailSignInProviderConfig(
-              enabled: true,
-              passwordRequired: false,
-            ),
-          ),
-        );
-
-        final tenantAuth = tenantManager.authForTenant(tenant.tenantId);
-
-        // Use unique emails to avoid conflicts with previous test runs
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-
-        // Create multiple users
-        final user1 = await tenantAuth.createUser(
-          CreateRequest(email: 'user1-$timestamp@example.com'),
-        );
-        final user2 = await tenantAuth.createUser(
-          CreateRequest(email: 'user2-$timestamp@example.com'),
-        );
-
-        final users = await tenantAuth.listUsers();
-
-        expect(users.users.length, equals(2));
-        expect(
-          users.users.map((u) => u.uid),
-          containsAll([user1.uid, user2.uid]),
-        );
-
-        // Cleanup: Delete the users
-        await tenantAuth.deleteUser(user1.uid);
-        await tenantAuth.deleteUser(user2.uid);
-      });
-
       test('throws on empty tenant ID', () {
         expect(
           () => tenantManager.authForTenant(''),
@@ -389,29 +316,4 @@ void main() {
       });
     });
   });
-}
-
-Future<void> cleanup(Auth auth) async {
-  if (!Environment.isAuthEmulatorEnabled()) {
-    throw Exception('Cannot cleanup non-emulator app');
-  }
-
-  final tenantManager = auth.tenantManager;
-
-  // List all tenants and delete them
-  var result = await tenantManager.listTenants(maxResults: 100);
-
-  while (true) {
-    await Future.wait([
-      for (final tenant in result.tenants)
-        tenantManager.deleteTenant(tenant.tenantId),
-    ]);
-
-    if (result.pageToken == null) break;
-
-    result = await tenantManager.listTenants(
-      maxResults: 100,
-      pageToken: result.pageToken,
-    );
-  }
 }

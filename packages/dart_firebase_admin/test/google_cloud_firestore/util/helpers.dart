@@ -12,7 +12,7 @@ const projectId = 'dart-firebase-admin';
 /// Whether Google Application Default Credentials are available.
 /// Used to skip tests that require production Firebase access.
 final hasGoogleEnv =
-    Platform.environment['GOOGLE_APPLICATION_CREDENTIALS'] != null;
+    Platform.environment[Environment.googleApplicationCredentials] != null;
 
 /// Validates that required emulator environment variables are set.
 ///

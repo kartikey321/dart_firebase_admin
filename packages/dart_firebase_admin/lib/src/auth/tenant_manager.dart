@@ -54,6 +54,24 @@ class TenantAwareAuth extends _BaseAuth {
         tokenGenerator: _createFirebaseTokenGenerator(app, tenantId: tenantId),
       );
 
+  /// Internal constructor for testing.
+  ///
+  /// [app] - The app that created this tenant.
+  /// [tenantId] - The corresponding tenant ID.
+  /// [idTokenVerifier] - Optional ID token verifier for testing.
+  /// [sessionCookieVerifier] - Optional session cookie verifier for testing.
+  @internal
+  TenantAwareAuth.internal(
+    FirebaseApp app,
+    this.tenantId, {
+    super.idTokenVerifier,
+    super.sessionCookieVerifier,
+  }) : super(
+         app: app,
+         authRequestHandler: _TenantAwareAuthRequestHandler(app, tenantId),
+         tokenGenerator: _createFirebaseTokenGenerator(app, tenantId: tenantId),
+       );
+
   /// The tenant identifier corresponding to this `TenantAwareAuth` instance.
   /// All calls to the user management APIs, OIDC/SAML provider management APIs, email link
   /// generation APIs, etc will only be applied within the scope of this tenant.
@@ -95,19 +113,24 @@ class TenantAwareAuth extends _BaseAuth {
   /// The session cookie JWT will have the same payload claims as the provided ID token.
   ///
   /// [idToken] - The Firebase ID token to exchange for a session cookie.
-  /// [expiresIn] - The session cookie custom expiration in milliseconds. The minimum allowed is
-  ///   5 minutes and the maxium allowed is 2 weeks.
+  /// [sessionCookieOptions] - The session cookie options which includes custom expiration
+  ///   in milliseconds. The minimum allowed is 5 minutes and the maxium allowed is 2 weeks.
   ///
   /// Returns a [Future] that resolves with the created session cookie.
   @override
   Future<String> createSessionCookie(
-    String idToken, {
-    required int expiresIn,
-  }) async {
+    String idToken,
+    SessionCookieOptions sessionCookieOptions,
+  ) async {
+    // Validate idToken is not empty before verification.
+    if (idToken.isEmpty) {
+      throw FirebaseAuthAdminException(AuthClientErrorCode.invalidIdToken);
+    }
+
     // Verify the ID token and check tenant ID before creating session cookie.
     await verifyIdToken(idToken);
 
-    return super.createSessionCookie(idToken, expiresIn: expiresIn);
+    return super.createSessionCookie(idToken, sessionCookieOptions);
   }
 
   /// Verifies a Firebase session cookie. Returns a [Future] with the session cookie's decoded claims
@@ -157,6 +180,15 @@ class TenantManager {
     : _authRequestHandler = AuthRequestHandler(_app),
       _tenantsMap = {};
 
+  /// Internal constructor for testing.
+  ///
+  /// [FirebaseApp] - The app for this TenantManager instance.
+  /// [authRequestHandler] - Optional request handler for testing.
+  @internal
+  TenantManager.internal(this._app, {AuthRequestHandler? authRequestHandler})
+    : _authRequestHandler = authRequestHandler ?? AuthRequestHandler(_app),
+      _tenantsMap = {};
+
   final FirebaseApp _app;
   final AuthRequestHandler _authRequestHandler;
   final Map<String, TenantAwareAuth> _tenantsMap;
@@ -186,7 +218,7 @@ class TenantManager {
   ///
   /// Returns a [Future] fulfilled with the tenant configuration for the provided [tenantId].
   Future<Tenant> getTenant(String tenantId) async {
-    final response = await _authRequestHandler._getTenant(tenantId);
+    final response = await _authRequestHandler.getTenant(tenantId);
     return Tenant._fromResponse(response);
   }
 
@@ -204,7 +236,7 @@ class TenantManager {
     int maxResults = 1000,
     String? pageToken,
   }) async {
-    final response = await _authRequestHandler._listTenants(
+    final response = await _authRequestHandler.listTenants(
       maxResults: maxResults,
       pageToken: pageToken,
     );
@@ -231,7 +263,7 @@ class TenantManager {
   ///
   /// Returns a [Future] that completes once the tenant has been deleted.
   Future<void> deleteTenant(String tenantId) async {
-    await _authRequestHandler._deleteTenant(tenantId);
+    await _authRequestHandler.deleteTenant(tenantId);
   }
 
   /// Creates a new tenant.
@@ -243,7 +275,7 @@ class TenantManager {
   /// Returns a [Future] fulfilled with the tenant configuration corresponding to the newly
   /// created tenant.
   Future<Tenant> createTenant(CreateTenantRequest tenantOptions) async {
-    final response = await _authRequestHandler._createTenant(tenantOptions);
+    final response = await _authRequestHandler.createTenant(tenantOptions);
     return Tenant._fromResponse(response);
   }
 
@@ -257,7 +289,7 @@ class TenantManager {
     String tenantId,
     UpdateTenantRequest tenantOptions,
   ) async {
-    final response = await _authRequestHandler._updateTenant(
+    final response = await _authRequestHandler.updateTenant(
       tenantId,
       tenantOptions,
     );

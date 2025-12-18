@@ -1,7 +1,21 @@
+// Firebase Auth Integration Tests
+//
+// SAFETY: These tests require Firebase Auth Emulator by default to prevent
+// accidental writes to production.
+//
+// All tests use the global `auth` instance from main setUp() which automatically
+// requires FIREBASE_AUTH_EMULATOR_HOST to be set. This is safe to run without
+// production credentials.
+//
+// For production-only tests (Session Cookies, getUsers, Provider Configs, etc.),
+// see test/auth/auth_integration_prod_test.dart
+//
+// To run these tests:
+//   FIREBASE_AUTH_EMULATOR_HOST=localhost:9099 dart test test/auth/integration_test.dart
+
 import 'dart:convert';
 
 import 'package:dart_firebase_admin/auth.dart';
-import 'package:dart_firebase_admin/src/app.dart';
 import 'package:http/http.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
@@ -9,6 +23,7 @@ import 'package:uuid/uuid.dart';
 
 import '../google_cloud_firestore/util/helpers.dart';
 import '../mock.dart';
+import 'util/helpers.dart';
 
 const _uid = Uuid();
 
@@ -16,8 +31,9 @@ void main() {
   late Auth auth;
 
   setUp(() {
-    final sdk = createApp(tearDown: () => cleanup(auth));
-    auth = Auth(sdk);
+    // By default, require emulator to prevent accidental production writes
+    // Production-only tests should override this in their own setUp
+    auth = createAuthForTest();
   });
 
   setUpAll(registerFallbacks);
@@ -476,15 +492,96 @@ void main() {
       });
     });
   });
-}
 
-Future<void> cleanup(Auth auth) async {
-  if (!Environment.isAuthEmulatorEnabled()) {
-    throw Exception('Cannot cleanup non-emulator app');
-  }
+  group('deleteUser', () {
+    test('deletes user and verifies deletion', () async {
+      final user = await auth.createUser(CreateRequest(uid: _uid.v4()));
 
-  final users = await auth.listUsers();
-  await Future.wait([
-    for (final user in users.users) auth.deleteUser(user.uid),
-  ]);
+      await auth.deleteUser(user.uid);
+
+      await expectLater(
+        () => auth.getUser(user.uid),
+        throwsA(isA<FirebaseAuthAdminException>()),
+      );
+    });
+  });
+
+  group('deleteUsers', () {
+    test('deletes multiple users successfully', () async {
+      final user1 = await auth.createUser(CreateRequest(uid: _uid.v4()));
+      final user2 = await auth.createUser(CreateRequest(uid: _uid.v4()));
+      final user3 = await auth.createUser(CreateRequest(uid: _uid.v4()));
+
+      final result = await auth.deleteUsers([user1.uid, user2.uid, user3.uid]);
+
+      expect(result.successCount, equals(3));
+      expect(result.failureCount, equals(0));
+      expect(result.errors, isEmpty);
+    });
+
+    test('reports errors for non-existent users', () async {
+      final user1 = await auth.createUser(CreateRequest(uid: _uid.v4()));
+
+      final result = await auth.deleteUsers([
+        user1.uid,
+        'non-existent-uid-1',
+        'non-existent-uid-2',
+      ]);
+
+      // Emulator behavior may differ - it might succeed for non-existent users
+      expect(result.successCount, greaterThanOrEqualTo(1));
+      expect(result.successCount + result.failureCount, equals(3));
+    });
+  });
+
+  group('listUsers', () {
+    test('lists all users', () async {
+      // Create some test users
+      await auth.createUser(CreateRequest(uid: _uid.v4()));
+      await auth.createUser(CreateRequest(uid: _uid.v4()));
+      await auth.createUser(CreateRequest(uid: _uid.v4()));
+
+      final result = await auth.listUsers();
+
+      expect(result.users, isNotEmpty);
+      expect(result.users.length, greaterThanOrEqualTo(3));
+      expect(result.users, everyElement(isA<UserRecord>()));
+    });
+
+    test('supports pagination with maxResults', () async {
+      // Create several users
+      for (var i = 0; i < 5; i++) {
+        await auth.createUser(CreateRequest(uid: _uid.v4()));
+      }
+
+      final firstPage = await auth.listUsers(maxResults: 2);
+
+      expect(firstPage.users.length, equals(2));
+      if (firstPage.pageToken != null) {
+        expect(firstPage.pageToken, isNotEmpty);
+      }
+    });
+
+    test('supports pagination with pageToken', () async {
+      // Create several users
+      for (var i = 0; i < 5; i++) {
+        await auth.createUser(CreateRequest(uid: _uid.v4()));
+      }
+
+      final firstPage = await auth.listUsers(maxResults: 2);
+
+      if (firstPage.pageToken != null) {
+        final secondPage = await auth.listUsers(
+          maxResults: 2,
+          pageToken: firstPage.pageToken,
+        );
+
+        expect(secondPage.users.length, greaterThan(0));
+        expect(
+          secondPage.users.first.uid,
+          isNot(equals(firstPage.users.first.uid)),
+        );
+      }
+    });
+  });
 }

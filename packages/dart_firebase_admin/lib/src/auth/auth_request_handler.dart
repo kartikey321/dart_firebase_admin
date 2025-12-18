@@ -115,14 +115,17 @@ abstract class _AbstractAuthRequestHandler {
   Future<auth2.GoogleCloudIdentitytoolkitAdminV2OAuthIdpConfig>
   createOAuthIdpConfig(OIDCAuthProviderConfig options) async {
     final request =
-        _OIDCConfig.buildServerRequest(options) ??
+        OIDCAuthProviderConfig._buildServerRequest(options) ??
         auth2.GoogleCloudIdentitytoolkitAdminV2OAuthIdpConfig();
 
-    final response = await _httpClient.createOAuthIdpConfig(request);
+    final response = await _httpClient.createOAuthIdpConfig(
+      request,
+      options.providerId,
+    );
 
     final name = response.name;
     if (name == null ||
-        _OIDCConfig.getProviderIdFromResourceName(name) == null) {
+        OIDCAuthProviderConfig.getProviderIdFromResourceName(name) == null) {
       throw FirebaseAuthAdminException(
         AuthClientErrorCode.internalError,
         'INTERNAL ASSERT FAILED: Unable to create OIDC configuration',
@@ -136,14 +139,17 @@ abstract class _AbstractAuthRequestHandler {
   Future<auth2.GoogleCloudIdentitytoolkitAdminV2InboundSamlConfig>
   createInboundSamlConfig(SAMLAuthProviderConfig options) async {
     final request =
-        _SAMLConfig.buildServerRequest(options) ??
+        SAMLAuthProviderConfig._buildServerRequest(options) ??
         auth2.GoogleCloudIdentitytoolkitAdminV2InboundSamlConfig();
 
-    final response = await _httpClient.createInboundSamlConfig(request);
+    final response = await _httpClient.createInboundSamlConfig(
+      request,
+      options.providerId,
+    );
 
     final name = response.name;
     if (name == null ||
-        _SAMLConfig.getProviderIdFromResourceName(name) == null) {
+        SAMLAuthProviderConfig.getProviderIdFromResourceName(name) == null) {
       throw FirebaseAuthAdminException(
         AuthClientErrorCode.internalError,
         'INTERNAL ASSERT FAILED: Unable to create SAML configuration',
@@ -204,11 +210,11 @@ abstract class _AbstractAuthRequestHandler {
     String providerId,
     OIDCUpdateAuthProviderRequest options,
   ) async {
-    if (!_OIDCConfig.isProviderId(providerId)) {
+    if (!OIDCAuthProviderConfig.isProviderId(providerId)) {
       throw FirebaseAuthAdminException(AuthClientErrorCode.invalidProviderId);
     }
 
-    final request = _OIDCConfig.buildServerRequest(
+    final request = OIDCAuthProviderConfig._buildServerRequest(
       options,
       ignoreMissingFields: true,
     );
@@ -222,7 +228,7 @@ abstract class _AbstractAuthRequestHandler {
 
     final name = response.name;
     if (name == null ||
-        _OIDCConfig.getProviderIdFromResourceName(name) == null) {
+        OIDCAuthProviderConfig.getProviderIdFromResourceName(name) == null) {
       throw FirebaseAuthAdminException(
         AuthClientErrorCode.internalError,
         'INTERNAL ASSERT FAILED: Unable to update OIDC configuration',
@@ -238,11 +244,11 @@ abstract class _AbstractAuthRequestHandler {
     String providerId,
     SAMLUpdateAuthProviderRequest options,
   ) async {
-    if (!_SAMLConfig.isProviderId(providerId)) {
+    if (!SAMLAuthProviderConfig.isProviderId(providerId)) {
       throw FirebaseAuthAdminException(AuthClientErrorCode.invalidProviderId);
     }
 
-    final request = _SAMLConfig.buildServerRequest(
+    final request = SAMLAuthProviderConfig._buildServerRequest(
       options,
       ignoreMissingFields: true,
     );
@@ -255,7 +261,7 @@ abstract class _AbstractAuthRequestHandler {
 
     final name = response.name;
     if (name == null ||
-        _SAMLConfig.getProviderIdFromResourceName(name) == null) {
+        SAMLAuthProviderConfig.getProviderIdFromResourceName(name) == null) {
       throw FirebaseAuthAdminException(
         AuthClientErrorCode.internalError,
         'INTERNAL ASSERT FAILED: Unable to update SAML provider configuration',
@@ -267,7 +273,7 @@ abstract class _AbstractAuthRequestHandler {
   /// Looks up an OIDC provider configuration by provider ID.
   Future<auth2.GoogleCloudIdentitytoolkitAdminV2OAuthIdpConfig>
   getOAuthIdpConfig(String providerId) {
-    if (!_OIDCConfig.isProviderId(providerId)) {
+    if (!OIDCAuthProviderConfig.isProviderId(providerId)) {
       throw FirebaseAuthAdminException(AuthClientErrorCode.invalidProviderId);
     }
 
@@ -276,7 +282,7 @@ abstract class _AbstractAuthRequestHandler {
 
   Future<auth2.GoogleCloudIdentitytoolkitAdminV2InboundSamlConfig>
   getInboundSamlConfig(String providerId) {
-    if (!_SAMLConfig.isProviderId(providerId)) {
+    if (!SAMLAuthProviderConfig.isProviderId(providerId)) {
       throw FirebaseAuthAdminException(AuthClientErrorCode.invalidProviderId);
     }
 
@@ -285,7 +291,7 @@ abstract class _AbstractAuthRequestHandler {
 
   /// Deletes an OIDC configuration identified by a providerId.
   Future<void> deleteOAuthIdpConfig(String providerId) {
-    if (!_OIDCConfig.isProviderId(providerId)) {
+    if (!OIDCAuthProviderConfig.isProviderId(providerId)) {
       throw FirebaseAuthAdminException(AuthClientErrorCode.invalidProviderId);
     }
 
@@ -294,7 +300,7 @@ abstract class _AbstractAuthRequestHandler {
 
   /// Deletes a SAML configuration identified by a providerId.
   Future<void> deleteInboundSamlConfig(String providerId) {
-    if (!_SAMLConfig.isProviderId(providerId)) {
+    if (!SAMLAuthProviderConfig.isProviderId(providerId)) {
       throw FirebaseAuthAdminException(AuthClientErrorCode.invalidProviderId);
     }
 
@@ -305,8 +311,8 @@ abstract class _AbstractAuthRequestHandler {
   /// session management (set as a server side session cookie with custom cookie policy).
   /// The session cookie JWT will have the same payload claims as the provided ID token.
   Future<String> createSessionCookie(String idToken, {required int expiresIn}) {
-    // Convert to seconds.
-    final validDuration = expiresIn / 1000;
+    // Convert to seconds (use integer division to avoid decimal).
+    final validDuration = expiresIn ~/ 1000;
     final request =
         auth1.GoogleCloudIdentitytoolkitV1CreateSessionCookieRequest(
           idToken: idToken,
@@ -527,6 +533,10 @@ abstract class _AbstractAuthRequestHandler {
   Future<auth1.GoogleCloudIdentitytoolkitV1UserInfo> getAccountInfoByUid(
     String uid,
   ) async {
+    if (!isUid(uid)) {
+      throw FirebaseAuthAdminException(AuthClientErrorCode.invalidUid);
+    }
+
     final response = await _accountsLookup(
       auth1.GoogleCloudIdentitytoolkitV1GetAccountInfoRequest(localId: [uid]),
     );
@@ -566,8 +576,11 @@ abstract class _AbstractAuthRequestHandler {
     required String providerId,
     required String rawId,
   }) async {
-    if (providerId.isEmpty || rawId.isEmpty) {
+    if (providerId.isEmpty) {
       throw FirebaseAuthAdminException(AuthClientErrorCode.invalidProviderId);
+    }
+    if (rawId.isEmpty) {
+      throw FirebaseAuthAdminException(AuthClientErrorCode.invalidUid);
     }
 
     final response = await _accountsLookup(
@@ -603,17 +616,39 @@ abstract class _AbstractAuthRequestHandler {
     for (final id in identifiers) {
       switch (id) {
         case UidIdentifier():
-          final localIds = request.localId ?? <String>[];
-          localIds.add(id.uid);
+          if (request.localId != null) {
+            request.localId!.add(id.uid);
+          } else {
+            request.localId = [id.uid];
+          }
         case EmailIdentifier():
-          final emails = request.email ?? <String>[];
-          emails.add(id.email);
+          if (request.email != null) {
+            request.email!.add(id.email);
+          } else {
+            request.email = [id.email];
+          }
         case PhoneIdentifier():
-          final phoneNumbers = request.phoneNumber ?? <String>[];
-          phoneNumbers.add(id.phoneNumber);
+          if (request.phoneNumber != null) {
+            request.phoneNumber!.add(id.phoneNumber);
+          } else {
+            request.phoneNumber = [id.phoneNumber];
+          }
         case ProviderIdentifier():
-          final providerIds = request.federatedUserId ?? <String>[];
-          providerIds.add(id.providerId);
+          if (request.federatedUserId != null) {
+            request.federatedUserId!.add(
+              auth1.GoogleCloudIdentitytoolkitV1FederatedUserIdentifier(
+                providerId: id.providerId,
+                rawId: id.providerUid,
+              ),
+            );
+          } else {
+            request.federatedUserId = [
+              auth1.GoogleCloudIdentitytoolkitV1FederatedUserIdentifier(
+                providerId: id.providerId,
+                rawId: id.providerUid,
+              ),
+            ];
+          }
       }
     }
 
@@ -745,7 +780,7 @@ class AuthRequestHandler extends _AbstractAuthRequestHandler {
   }
 
   /// Looks up a tenant by tenant ID.
-  Future<Map<String, dynamic>> _getTenant(String tenantId) async {
+  Future<Map<String, dynamic>> getTenant(String tenantId) async {
     if (tenantId.isEmpty) {
       throw FirebaseAuthAdminException(
         AuthClientErrorCode.invalidTenantId,
@@ -759,10 +794,17 @@ class AuthRequestHandler extends _AbstractAuthRequestHandler {
 
   /// Lists tenants (single batch only) with a size of maxResults and starting from
   /// the offset as specified by pageToken.
-  Future<Map<String, dynamic>> _listTenants({
+  Future<Map<String, dynamic>> listTenants({
     int maxResults = 1000,
     String? pageToken,
   }) async {
+    if (maxResults > 1000) {
+      throw FirebaseAuthAdminException(
+        AuthClientErrorCode.invalidArgument,
+        'maxResults must not exceed 1000.',
+      );
+    }
+
     final response = await _httpClient.listTenants(
       maxResults: maxResults,
       pageToken: pageToken,
@@ -783,7 +825,7 @@ class AuthRequestHandler extends _AbstractAuthRequestHandler {
   }
 
   /// Deletes a tenant identified by a tenantId.
-  Future<void> _deleteTenant(String tenantId) async {
+  Future<void> deleteTenant(String tenantId) async {
     if (tenantId.isEmpty) {
       throw FirebaseAuthAdminException(
         AuthClientErrorCode.invalidTenantId,
@@ -795,7 +837,7 @@ class AuthRequestHandler extends _AbstractAuthRequestHandler {
   }
 
   /// Creates a new tenant with the properties provided.
-  Future<Map<String, dynamic>> _createTenant(
+  Future<Map<String, dynamic>> createTenant(
     CreateTenantRequest tenantOptions,
   ) async {
     final requestMap = Tenant._buildServerRequest(tenantOptions, true);
@@ -807,7 +849,7 @@ class AuthRequestHandler extends _AbstractAuthRequestHandler {
   }
 
   /// Updates an existing tenant with the properties provided.
-  Future<Map<String, dynamic>> _updateTenant(
+  Future<Map<String, dynamic>> updateTenant(
     String tenantId,
     UpdateTenantRequest tenantOptions,
   ) async {
@@ -861,12 +903,37 @@ class AuthRequestHandler extends _AbstractAuthRequestHandler {
   Map<String, dynamic> _mfaConfigToJson(
     auth2.GoogleCloudIdentitytoolkitAdminV2MultiFactorAuthConfig config,
   ) {
+    // Convert providerConfigs from Google API objects to JSON maps
+    List<Map<String, dynamic>>? providerConfigsJson;
+    if (config.providerConfigs != null) {
+      providerConfigsJson = <Map<String, dynamic>>[];
+      for (final providerConfig in config.providerConfigs!) {
+        final configMap = <String, dynamic>{};
+
+        // Extract state
+        if (providerConfig.state != null) {
+          configMap['state'] = providerConfig.state;
+        }
+
+        // Extract totpProviderConfig
+        if (providerConfig.totpProviderConfig != null) {
+          final totpConfig = <String, dynamic>{};
+          if (providerConfig.totpProviderConfig!.adjacentIntervals != null) {
+            totpConfig['adjacentIntervals'] =
+                providerConfig.totpProviderConfig!.adjacentIntervals;
+          }
+          configMap['totpProviderConfig'] = totpConfig;
+        }
+
+        providerConfigsJson.add(configMap);
+      }
+    }
+
     return {
       if (config.state != null) 'state': config.state,
       if (config.enabledProviders != null)
         'enabledProviders': config.enabledProviders,
-      if (config.providerConfigs != null)
-        'providerConfigs': config.providerConfigs,
+      if (providerConfigsJson != null) 'providerConfigs': providerConfigsJson,
     };
   }
 
@@ -888,14 +955,83 @@ class AuthRequestHandler extends _AbstractAuthRequestHandler {
   Map<String, dynamic> _recaptchaConfigToJson(
     auth2.GoogleCloudIdentitytoolkitAdminV2RecaptchaConfig config,
   ) {
-    return {
+    final result = <String, dynamic>{
       if (config.emailPasswordEnforcementState != null)
         'emailPasswordEnforcementState': config.emailPasswordEnforcementState,
-      if (config.phoneEnforcementState != null)
-        'phoneEnforcementState': config.phoneEnforcementState,
-      if (config.useAccountDefender != null)
-        'useAccountDefender': config.useAccountDefender,
     };
+
+    // phoneEnforcementState may not be in the Google API types yet, check if it exists
+    try {
+      final phoneState = (config as dynamic).phoneEnforcementState;
+      if (phoneState != null) {
+        result['phoneEnforcementState'] = phoneState;
+      }
+    } catch (_) {
+      // Field doesn't exist in API types yet
+    }
+
+    if (config.useAccountDefender != null) {
+      result['useAccountDefender'] = config.useAccountDefender;
+    }
+
+    // Add managedRules if present
+    if (config.managedRules != null) {
+      result['managedRules'] = config.managedRules!.map((rule) {
+        return {
+          'endScore': rule.endScore,
+          if (rule.action != null) 'action': rule.action,
+        };
+      }).toList();
+    }
+
+    // Add recaptchaKeys if present
+    if (config.recaptchaKeys != null) {
+      result['recaptchaKeys'] = config.recaptchaKeys!.map((key) {
+        return {'key': key.key, if (key.type != null) 'type': key.type};
+      }).toList();
+    }
+
+    // useSmsBotScore may not be in the Google API types yet, check if it exists
+    try {
+      final useSmsBotScore = (config as dynamic).useSmsBotScore;
+      if (useSmsBotScore != null) {
+        result['useSmsBotScore'] = useSmsBotScore;
+      }
+    } catch (_) {
+      // Field doesn't exist in API types yet
+    }
+
+    // useSmsTollFraudProtection may not be in the Google API types yet, check if it exists
+    try {
+      final useSmsTollFraudProtection =
+          (config as dynamic).useSmsTollFraudProtection;
+      if (useSmsTollFraudProtection != null) {
+        result['useSmsTollFraudProtection'] = useSmsTollFraudProtection;
+      }
+    } catch (_) {
+      // Field doesn't exist in API types yet
+    }
+
+    // tollFraudManagedRules may not be in the Google API types yet, check if it exists
+    try {
+      final tollFraudManagedRules = (config as dynamic).tollFraudManagedRules;
+      if (tollFraudManagedRules != null) {
+        result['tollFraudManagedRules'] =
+            (tollFraudManagedRules as List<dynamic>).map((rule) {
+              final ruleMap = rule as Map<String, dynamic>;
+              return {
+                'startScore': ruleMap['startScore'] is int
+                    ? (ruleMap['startScore'] as int).toDouble()
+                    : ruleMap['startScore'] as double,
+                if (ruleMap['action'] != null) 'action': ruleMap['action'],
+              };
+            }).toList();
+      }
+    } catch (_) {
+      // Field doesn't exist in API types yet
+    }
+
+    return result;
   }
 
   Map<String, dynamic> _passwordPolicyConfigToJson(

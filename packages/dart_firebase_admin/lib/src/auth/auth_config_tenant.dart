@@ -111,26 +111,93 @@ enum MultiFactorConfigState {
   }
 }
 
+/// Interface representing configuration settings for TOTP second factor auth.
+class TotpMultiFactorProviderConfig {
+  /// Creates a new [TotpMultiFactorProviderConfig] instance.
+  TotpMultiFactorProviderConfig({this.adjacentIntervals}) {
+    final intervals = adjacentIntervals;
+    if (intervals != null && (intervals < 0 || intervals > 10)) {
+      throw FirebaseAuthAdminException(
+        AuthClientErrorCode.invalidArgument,
+        '"adjacentIntervals" must be a valid number between 0 and 10 (both inclusive).',
+      );
+    }
+  }
+
+  /// The allowed number of adjacent intervals that will be used for verification
+  /// to compensate for clock skew. Valid range is 0-10 (inclusive).
+  final int? adjacentIntervals;
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (adjacentIntervals != null) 'adjacentIntervals': adjacentIntervals,
+    };
+  }
+}
+
+/// Interface representing a multi-factor auth provider configuration.
+/// This interface is used for second factor auth providers other than SMS.
+/// Currently, only TOTP is supported.
+class MultiFactorProviderConfig {
+  /// Creates a new [MultiFactorProviderConfig] instance.
+  MultiFactorProviderConfig({required this.state, this.totpProviderConfig}) {
+    // Since TOTP is the only provider config available right now, it must be defined
+    if (totpProviderConfig == null) {
+      throw FirebaseAuthAdminException(
+        AuthClientErrorCode.invalidConfig,
+        '"totpProviderConfig" must be defined.',
+      );
+    }
+  }
+
+  /// Indicates whether this multi-factor provider is enabled or disabled.
+  final MultiFactorConfigState state;
+
+  /// TOTP multi-factor provider config.
+  final TotpMultiFactorProviderConfig? totpProviderConfig;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'state': state.value,
+      if (totpProviderConfig != null)
+        'totpProviderConfig': totpProviderConfig!.toJson(),
+    };
+  }
+}
+
 /// Interface representing a multi-factor configuration.
 class MultiFactorConfig {
-  MultiFactorConfig({required this.state, this.factorIds});
+  MultiFactorConfig({
+    required this.state,
+    this.factorIds,
+    this.providerConfigs,
+  });
 
   /// The multi-factor config state.
   final MultiFactorConfigState state;
 
   /// The list of identifiers for enabled second factors.
-  /// Currently only 'phone' is supported.
+  /// Currently 'phone' and 'totp' are supported.
   final List<AuthFactorType>? factorIds;
+
+  /// The configuration for multi-factor auth providers.
+  final List<MultiFactorProviderConfig>? providerConfigs;
 
   Map<String, dynamic> toJson() => {
     'state': state.value,
     if (factorIds != null) 'factorIds': factorIds,
+    if (providerConfigs != null)
+      'providerConfigs': providerConfigs!.map((e) => e.toJson()).toList(),
   };
 }
 
 /// Internal class for multi-factor authentication configuration.
 class _MultiFactorAuthConfig implements MultiFactorConfig {
-  _MultiFactorAuthConfig({required this.state, this.factorIds});
+  _MultiFactorAuthConfig({
+    required this.state,
+    this.factorIds,
+    this.providerConfigs,
+  });
 
   factory _MultiFactorAuthConfig.fromServerResponse(
     Map<String, dynamic> response,
@@ -155,9 +222,38 @@ class _MultiFactorAuthConfig implements MultiFactorConfig {
       }
     }
 
+    // Parse provider configs
+    final providerConfigsData = response['providerConfigs'] as List<dynamic>?;
+    final providerConfigs = <MultiFactorProviderConfig>[];
+
+    if (providerConfigsData != null) {
+      for (final configData in providerConfigsData) {
+        if (configData is! Map<String, dynamic>) continue;
+
+        final configState = configData['state'] as String?;
+        if (configState == null) continue;
+
+        final totpConfigData =
+            configData['totpProviderConfig'] as Map<String, dynamic>?;
+        if (totpConfigData != null) {
+          final adjacentIntervals = totpConfigData['adjacentIntervals'] as int?;
+          providerConfigs.add(
+            MultiFactorProviderConfig(
+              state: MultiFactorConfigState.fromString(configState),
+              totpProviderConfig: TotpMultiFactorProviderConfig(
+                adjacentIntervals: adjacentIntervals,
+              ),
+            ),
+          );
+        }
+      }
+    }
+
     return _MultiFactorAuthConfig(
       state: MultiFactorConfigState.fromString(stateValue as String),
       factorIds: factorIds.isEmpty ? null : factorIds,
+      providerConfigs:
+          providerConfigs, // Always return list, never null (matches Node.js SDK)
     );
   }
 
@@ -177,6 +273,26 @@ class _MultiFactorAuthConfig implements MultiFactorConfig {
       request['enabledProviders'] = enabledProviders;
     }
 
+    // Build provider configs
+    if (options.providerConfigs != null) {
+      final providerConfigsData = <Map<String, dynamic>>[];
+      for (final config in options.providerConfigs!) {
+        final configData = <String, dynamic>{'state': config.state.value};
+
+        if (config.totpProviderConfig != null) {
+          final totpData = <String, dynamic>{};
+          if (config.totpProviderConfig!.adjacentIntervals != null) {
+            totpData['adjacentIntervals'] =
+                config.totpProviderConfig!.adjacentIntervals;
+          }
+          configData['totpProviderConfig'] = totpData;
+        }
+
+        providerConfigsData.add(configData);
+      }
+      request['providerConfigs'] = providerConfigsData;
+    }
+
     return request;
   }
 
@@ -187,9 +303,14 @@ class _MultiFactorAuthConfig implements MultiFactorConfig {
   final List<AuthFactorType>? factorIds;
 
   @override
+  final List<MultiFactorProviderConfig>? providerConfigs;
+
+  @override
   Map<String, dynamic> toJson() => {
     'state': state.value,
     if (factorIds != null) 'factorIds': factorIds,
+    if (providerConfigs != null)
+      'providerConfigs': providerConfigs!.map((e) => e.toJson()).toList(),
   };
 }
 
@@ -257,6 +378,87 @@ enum RecaptchaProviderEnforcementState {
   }
 }
 
+/// The actions to take for reCAPTCHA-protected requests.
+enum RecaptchaAction {
+  block('BLOCK');
+
+  const RecaptchaAction(this.value);
+  final String value;
+
+  static RecaptchaAction fromString(String value) {
+    return RecaptchaAction.values.firstWhere(
+      (e) => e.value == value,
+      orElse: () => RecaptchaAction.block,
+    );
+  }
+}
+
+/// The key's platform type.
+enum RecaptchaKeyClientType {
+  web('WEB'),
+  ios('IOS'),
+  android('ANDROID');
+
+  const RecaptchaKeyClientType(this.value);
+  final String value;
+
+  static RecaptchaKeyClientType fromString(String value) {
+    return RecaptchaKeyClientType.values.firstWhere(
+      (e) => e.value == value,
+      orElse: () => RecaptchaKeyClientType.web,
+    );
+  }
+}
+
+/// The config for a reCAPTCHA action rule.
+class RecaptchaManagedRule {
+  const RecaptchaManagedRule({required this.endScore, this.action});
+
+  /// The action will be enforced if the reCAPTCHA score of a request is larger than endScore.
+  final double endScore;
+
+  /// The action for reCAPTCHA-protected requests.
+  final RecaptchaAction? action;
+
+  Map<String, dynamic> toJson() => {
+    'endScore': endScore,
+    if (action != null) 'action': action!.value,
+  };
+}
+
+/// The managed rules for toll fraud provider, containing the enforcement status.
+/// The toll fraud provider contains all SMS related user flows.
+class RecaptchaTollFraudManagedRule {
+  const RecaptchaTollFraudManagedRule({required this.startScore, this.action});
+
+  /// The action will be enforced if the reCAPTCHA score of a request is larger than startScore.
+  final double startScore;
+
+  /// The action for reCAPTCHA-protected requests.
+  final RecaptchaAction? action;
+
+  Map<String, dynamic> toJson() => {
+    'startScore': startScore,
+    if (action != null) 'action': action!.value,
+  };
+}
+
+/// The reCAPTCHA key config.
+class RecaptchaKey {
+  const RecaptchaKey({required this.key, this.type});
+
+  /// The reCAPTCHA site key.
+  final String key;
+
+  /// The key's client platform type.
+  final RecaptchaKeyClientType? type;
+
+  Map<String, dynamic> toJson() => {
+    'key': key,
+    if (type != null) 'type': type!.value,
+  };
+}
+
 /// The request interface for updating a reCAPTCHA Config.
 /// By enabling reCAPTCHA Enterprise Integration you are
 /// agreeing to reCAPTCHA Enterprise
@@ -265,7 +467,12 @@ class RecaptchaConfig {
   RecaptchaConfig({
     this.emailPasswordEnforcementState,
     this.phoneEnforcementState,
+    this.managedRules,
+    this.recaptchaKeys,
     this.useAccountDefender,
+    this.useSmsBotScore,
+    this.useSmsTollFraudProtection,
+    this.smsTollFraudManagedRules,
   });
 
   /// The enforcement state of the email password provider.
@@ -274,15 +481,44 @@ class RecaptchaConfig {
   /// The enforcement state of the phone provider.
   final RecaptchaProviderEnforcementState? phoneEnforcementState;
 
+  /// The reCAPTCHA managed rules.
+  final List<RecaptchaManagedRule>? managedRules;
+
+  /// The reCAPTCHA keys.
+  final List<RecaptchaKey>? recaptchaKeys;
+
   /// Whether to use account defender for reCAPTCHA assessment.
   final bool? useAccountDefender;
+
+  /// Whether to use the rCE bot score for reCAPTCHA phone provider.
+  /// Can only be true when the phone_enforcement_state is AUDIT or ENFORCE.
+  final bool? useSmsBotScore;
+
+  /// Whether to use the rCE SMS toll fraud protection risk score for reCAPTCHA phone provider.
+  /// Can only be true when the phone_enforcement_state is AUDIT or ENFORCE.
+  final bool? useSmsTollFraudProtection;
+
+  /// The managed rules for toll fraud provider, containing the enforcement status.
+  /// The toll fraud provider contains all SMS related user flows.
+  final List<RecaptchaTollFraudManagedRule>? smsTollFraudManagedRules;
 
   Map<String, dynamic> toJson() => {
     if (emailPasswordEnforcementState != null)
       'emailPasswordEnforcementState': emailPasswordEnforcementState!.value,
     if (phoneEnforcementState != null)
       'phoneEnforcementState': phoneEnforcementState!.value,
+    if (managedRules != null)
+      'managedRules': managedRules!.map((e) => e.toJson()).toList(),
+    if (recaptchaKeys != null)
+      'recaptchaKeys': recaptchaKeys!.map((e) => e.toJson()).toList(),
     if (useAccountDefender != null) 'useAccountDefender': useAccountDefender,
+    if (useSmsBotScore != null) 'useSmsBotScore': useSmsBotScore,
+    if (useSmsTollFraudProtection != null)
+      'useSmsTollFraudProtection': useSmsTollFraudProtection,
+    if (smsTollFraudManagedRules != null)
+      'smsTollFraudManagedRules': smsTollFraudManagedRules!
+          .map((e) => e.toJson())
+          .toList(),
   };
 }
 
@@ -291,12 +527,63 @@ class _RecaptchaAuthConfig implements RecaptchaConfig {
   _RecaptchaAuthConfig({
     this.emailPasswordEnforcementState,
     this.phoneEnforcementState,
+    this.managedRules,
+    this.recaptchaKeys,
     this.useAccountDefender,
+    this.useSmsBotScore,
+    this.useSmsTollFraudProtection,
+    this.smsTollFraudManagedRules,
   });
 
   factory _RecaptchaAuthConfig.fromServerResponse(
     Map<String, dynamic> response,
   ) {
+    List<RecaptchaManagedRule>? managedRules;
+    if (response['managedRules'] != null) {
+      final rulesList = response['managedRules'] as List<dynamic>;
+      managedRules = rulesList.map((rule) {
+        final ruleMap = rule as Map<String, dynamic>;
+        return RecaptchaManagedRule(
+          endScore: (ruleMap['endScore'] as num).toDouble(),
+          action: ruleMap['action'] != null
+              ? RecaptchaAction.fromString(ruleMap['action'] as String)
+              : null,
+        );
+      }).toList();
+    }
+
+    List<RecaptchaKey>? recaptchaKeys;
+    if (response['recaptchaKeys'] != null) {
+      final keysList = response['recaptchaKeys'] as List<dynamic>;
+      recaptchaKeys = keysList.map((key) {
+        final keyMap = key as Map<String, dynamic>;
+        return RecaptchaKey(
+          key: keyMap['key'] as String,
+          type: keyMap['type'] != null
+              ? RecaptchaKeyClientType.fromString(keyMap['type'] as String)
+              : null,
+        );
+      }).toList();
+    }
+
+    List<RecaptchaTollFraudManagedRule>? smsTollFraudManagedRules;
+    // Server response uses 'tollFraudManagedRules' but client uses 'smsTollFraudManagedRules'
+    final tollFraudRules =
+        response['tollFraudManagedRules'] ??
+        response['smsTollFraudManagedRules'];
+    if (tollFraudRules != null) {
+      final rulesList = tollFraudRules as List<dynamic>;
+      smsTollFraudManagedRules = rulesList.map((rule) {
+        final ruleMap = rule as Map<String, dynamic>;
+        return RecaptchaTollFraudManagedRule(
+          startScore: (ruleMap['startScore'] as num).toDouble(),
+          action: ruleMap['action'] != null
+              ? RecaptchaAction.fromString(ruleMap['action'] as String)
+              : null,
+        );
+      }).toList();
+    }
+
     return _RecaptchaAuthConfig(
       emailPasswordEnforcementState:
           response['emailPasswordEnforcementState'] != null
@@ -309,11 +596,18 @@ class _RecaptchaAuthConfig implements RecaptchaConfig {
               response['phoneEnforcementState'] as String,
             )
           : null,
+      managedRules: managedRules,
+      recaptchaKeys: recaptchaKeys,
       useAccountDefender: response['useAccountDefender'] as bool?,
+      useSmsBotScore: response['useSmsBotScore'] as bool?,
+      useSmsTollFraudProtection: response['useSmsTollFraudProtection'] as bool?,
+      smsTollFraudManagedRules: smsTollFraudManagedRules,
     );
   }
 
   static Map<String, dynamic> buildServerRequest(RecaptchaConfig options) {
+    _validate(options);
+
     final request = <String, dynamic>{};
 
     if (options.emailPasswordEnforcementState != null) {
@@ -323,11 +617,66 @@ class _RecaptchaAuthConfig implements RecaptchaConfig {
     if (options.phoneEnforcementState != null) {
       request['phoneEnforcementState'] = options.phoneEnforcementState!.value;
     }
+    if (options.managedRules != null) {
+      request['managedRules'] = options.managedRules!
+          .map((e) => e.toJson())
+          .toList();
+    }
+    if (options.recaptchaKeys != null) {
+      request['recaptchaKeys'] = options.recaptchaKeys!
+          .map((e) => e.toJson())
+          .toList();
+    }
     if (options.useAccountDefender != null) {
       request['useAccountDefender'] = options.useAccountDefender;
     }
+    if (options.useSmsBotScore != null) {
+      request['useSmsBotScore'] = options.useSmsBotScore;
+    }
+    if (options.useSmsTollFraudProtection != null) {
+      request['useSmsTollFraudProtection'] = options.useSmsTollFraudProtection;
+    }
+    // Server expects 'tollFraudManagedRules' but client uses 'smsTollFraudManagedRules'
+    if (options.smsTollFraudManagedRules != null) {
+      request['tollFraudManagedRules'] = options.smsTollFraudManagedRules!
+          .map((e) => e.toJson())
+          .toList();
+    }
 
     return request;
+  }
+
+  static void _validate(RecaptchaConfig options) {
+    if (options.managedRules != null) {
+      options.managedRules!.forEach(_validateManagedRule);
+    }
+
+    // Note: In Dart, bool? is already type-checked at compile time, so we don't need runtime validation
+    // But we keep the validation structure for consistency with Node.js SDK
+
+    if (options.smsTollFraudManagedRules != null) {
+      options.smsTollFraudManagedRules!.forEach(_validateTollFraudManagedRule);
+    }
+  }
+
+  static void _validateManagedRule(RecaptchaManagedRule rule) {
+    if (rule.action != null && rule.action != RecaptchaAction.block) {
+      throw FirebaseAuthAdminException(
+        AuthClientErrorCode.invalidConfig,
+        '"RecaptchaManagedRule.action" must be "BLOCK".',
+      );
+    }
+  }
+
+  static void _validateTollFraudManagedRule(
+    RecaptchaTollFraudManagedRule rule,
+  ) {
+    if (rule.action != null && rule.action != RecaptchaAction.block) {
+      throw FirebaseAuthAdminException(
+        AuthClientErrorCode.invalidConfig,
+        '"RecaptchaTollFraudManagedRule.action" must be "BLOCK".',
+      );
+    }
   }
 
   @override
@@ -337,7 +686,22 @@ class _RecaptchaAuthConfig implements RecaptchaConfig {
   final RecaptchaProviderEnforcementState? phoneEnforcementState;
 
   @override
+  final List<RecaptchaManagedRule>? managedRules;
+
+  @override
+  final List<RecaptchaKey>? recaptchaKeys;
+
+  @override
   final bool? useAccountDefender;
+
+  @override
+  final bool? useSmsBotScore;
+
+  @override
+  final bool? useSmsTollFraudProtection;
+
+  @override
+  final List<RecaptchaTollFraudManagedRule>? smsTollFraudManagedRules;
 
   @override
   Map<String, dynamic> toJson() => {
@@ -345,7 +709,18 @@ class _RecaptchaAuthConfig implements RecaptchaConfig {
       'emailPasswordEnforcementState': emailPasswordEnforcementState!.value,
     if (phoneEnforcementState != null)
       'phoneEnforcementState': phoneEnforcementState!.value,
+    if (managedRules != null)
+      'managedRules': managedRules!.map((e) => e.toJson()).toList(),
+    if (recaptchaKeys != null)
+      'recaptchaKeys': recaptchaKeys!.map((e) => e.toJson()).toList(),
     if (useAccountDefender != null) 'useAccountDefender': useAccountDefender,
+    if (useSmsBotScore != null) 'useSmsBotScore': useSmsBotScore,
+    if (useSmsTollFraudProtection != null)
+      'useSmsTollFraudProtection': useSmsTollFraudProtection,
+    if (smsTollFraudManagedRules != null)
+      'smsTollFraudManagedRules': smsTollFraudManagedRules!
+          .map((e) => e.toJson())
+          .toList(),
   };
 }
 
