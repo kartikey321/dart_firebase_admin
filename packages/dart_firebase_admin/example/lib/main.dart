@@ -1,13 +1,20 @@
 import 'package:dart_firebase_admin/auth.dart';
 import 'package:dart_firebase_admin/dart_firebase_admin.dart';
 import 'package:dart_firebase_admin/firestore.dart';
+import 'package:dart_firebase_admin/functions.dart';
 import 'package:dart_firebase_admin/messaging.dart';
 
 Future<void> main() async {
   final admin = FirebaseApp.initializeApp();
-  await authExample(admin);
-  await firestoreExample(admin);
-  await projectConfigExample(admin);
+
+  // Uncomment to run auth example
+  // await authExample(admin);
+
+  // Uncomment to run firestore example
+  // await firestoreExample(admin);
+
+  // Uncomment to run project config example
+  // await projectConfigExample(admin);
 
   // Uncomment to run tenant example (requires Identity Platform upgrade)
   // await tenantExample(admin);
@@ -15,9 +22,13 @@ Future<void> main() async {
   // Uncomment to run messaging example (requires valid fcm token)
   // await messagingExample(admin);
 
+  // Uncomment to run functions example
+  // await functionsExample(admin);
+
   await admin.close();
 }
 
+// ignore: unreachable_from_main
 Future<void> authExample(FirebaseApp admin) async {
   print('\n### Auth Example ###\n');
 
@@ -47,6 +58,7 @@ Future<void> authExample(FirebaseApp admin) async {
   }
 }
 
+// ignore: unreachable_from_main
 Future<void> firestoreExample(FirebaseApp admin) async {
   print('\n### Firestore Example ###\n');
 
@@ -64,6 +76,7 @@ Future<void> firestoreExample(FirebaseApp admin) async {
   }
 }
 
+// ignore: unreachable_from_main
 Future<void> projectConfigExample(FirebaseApp admin) async {
   print('\n### Project Config Example ###\n');
 
@@ -377,5 +390,85 @@ Future<void> messagingExample(FirebaseApp admin) async {
     }
   } catch (e) {
     print('> Error sending platform-specific message: $e');
+  }
+}
+
+/// Functions example prerequisites:
+/// 1) Run `npm run build` in `example_functions_ts` to generate `index.js`.
+/// 2) From the example directory root (with `firebase.json` and `.firebaserc`),
+///    start emulators with `firebase emulators:start`.
+/// 3) Run `dart_firebase_admin/packages/dart_firebase_admin/example/run_with_emulator.sh`.
+// ignore: unreachable_from_main
+Future<void> functionsExample(FirebaseApp admin) async {
+  print('\n### Functions Example ###\n');
+
+  final functions = Functions(admin);
+
+  // Get a task queue reference
+  // The function name should match an existing Cloud Function or queue name
+  final taskQueue = functions.taskQueue('helloWorld');
+
+  // Example 1: Enqueue a simple task
+  try {
+    print('> Enqueuing a simple task...\n');
+    await taskQueue.enqueue({
+      'userId': 'user-123',
+      'action': 'sendWelcomeEmail',
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    print('Task enqueued successfully!\n');
+  } on FirebaseFunctionsAdminException catch (e) {
+    print('> Functions error: ${e.code} - ${e.message}\n');
+  } catch (e) {
+    print('> Error enqueuing task: $e\n');
+  }
+
+  // Example 2: Enqueue with delay (1 hour from now)
+  try {
+    print('> Enqueuing a delayed task...\n');
+    await taskQueue.enqueue(
+      {'action': 'cleanupTempFiles'},
+      TaskOptions(schedule: DelayDelivery(3600)), // 1 hour delay
+    );
+    print('Delayed task enqueued successfully!\n');
+  } on FirebaseFunctionsAdminException catch (e) {
+    print('> Functions error: ${e.code} - ${e.message}\n');
+  }
+
+  // Example 3: Enqueue at specific time
+  try {
+    print('> Enqueuing a scheduled task...\n');
+    final scheduledTime = DateTime.now().add(const Duration(minutes: 30));
+    await taskQueue.enqueue({
+      'action': 'sendReport',
+    }, TaskOptions(schedule: AbsoluteDelivery(scheduledTime)));
+    print('Scheduled task enqueued for: $scheduledTime\n');
+  } on FirebaseFunctionsAdminException catch (e) {
+    print('> Functions error: ${e.code} - ${e.message}\n');
+  }
+
+  // Example 4: Enqueue with custom task ID (for deduplication)
+  try {
+    print('> Enqueuing a task with custom ID...\n');
+    await taskQueue.enqueue({
+      'orderId': 'order-456',
+      'action': 'processPayment',
+    }, TaskOptions(id: 'payment-order-456'));
+    print('Task with custom ID enqueued!\n');
+  } on FirebaseFunctionsAdminException catch (e) {
+    if (e.errorCode == FunctionsClientErrorCode.taskAlreadyExists) {
+      print('> Task with this ID already exists (deduplication)\n');
+    } else {
+      print('> Functions error: ${e.code} - ${e.message}\n');
+    }
+  }
+
+  // Example 5: Delete a task
+  try {
+    print('> Deleting task...\n');
+    await taskQueue.delete('payment-order-456');
+    print('Task deleted successfully!\n');
+  } on FirebaseFunctionsAdminException catch (e) {
+    print('> Functions error: ${e.code} - ${e.message}\n');
   }
 }
