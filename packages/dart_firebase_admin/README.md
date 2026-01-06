@@ -1,4 +1,4 @@
-## Firebase Admin Dart SDK
+# Firebase Admin Dart SDK
 
 ## Table of Contents
 
