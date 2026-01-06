@@ -6,12 +6,12 @@
  - [Installation](#installation)
  - [Initalization](#initalization)
  - [Usage](#usage)
-  - [Authentication](#authentication)
-  - [App Check](#app-check)
-  - [Firestore](#firestore)
-  - [Functions](#functions)
-  - [Messaging](#messaging)
-  - [Storage](#storage)
+   - [Authentication](#authentication)
+   - [App Check](#app-check)
+   - [Firestore](#firestore)
+   - [Functions](#functions)
+   - [Messaging](#messaging)
+   - [Storage](#storage)
  - [Supported Services](#supported-services)
  - [Additional Packages](#additional-packages)
  - [Contributing](#contributing)
@@ -203,8 +203,8 @@ TODO
 
 The Firebase Admin Dart SDK currently supports the following Firebase services:
 
-🟢 - Fully supported
-🟡 - Partially supported / Work in progress
+🟢 - Fully supported <br />
+🟡 - Partially supported / Work in progress <br />
 🔴 - Not supported
 
 | Service               | Status  | Notes                              |
