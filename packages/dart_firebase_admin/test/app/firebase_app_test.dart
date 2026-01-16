@@ -10,6 +10,7 @@ import 'package:googleapis_firestore/googleapis_firestore.dart'
 import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
 
+import '../helpers.dart';
 import '../mock.dart';
 import '../mock_service_account.dart';
 
@@ -321,23 +322,29 @@ void main() {
       });
 
       test('firestore returns Firestore instance', () {
-        final firestore = app.firestore();
+        final firestore = app.firestore(settings: mockFirestoreSettings);
         expect(firestore, isA<googleapis_firestore.Firestore>());
         // Verify we can use Firestore methods
         expect(firestore.collection('test'), isNotNull);
       });
 
       test('firestore returns cached instance', () {
-        final firestore1 = app.firestore();
-        final firestore2 = app.firestore();
+        final firestore1 = app.firestore(settings: mockFirestoreSettings);
+        final firestore2 = app.firestore(settings: mockFirestoreSettings);
         expect(identical(firestore1, firestore2), isTrue);
       });
 
       test(
         'firestore with different databaseId returns different instances',
         () {
-          final firestore1 = app.firestore(databaseId: 'db1');
-          final firestore2 = app.firestore(databaseId: 'db2');
+          final firestore1 = app.firestore(
+            settings: mockFirestoreSettingsWithDb('db1'),
+            databaseId: 'db1',
+          );
+          final firestore2 = app.firestore(
+            settings: mockFirestoreSettingsWithDb('db2'),
+            databaseId: 'db2',
+          );
           expect(identical(firestore1, firestore2), isFalse);
         },
       );
@@ -345,7 +352,10 @@ void main() {
       test('firestore throws when reinitializing with different settings', () {
         // Initialize with first settings
         app.firestore(
-          settings: const googleapis_firestore.Settings(host: 'localhost:8080'),
+          settings: const googleapis_firestore.Settings(
+            host: 'localhost:8080',
+            environmentOverride: {'FIRESTORE_EMULATOR_HOST': 'localhost:8080'},
+          ),
         );
 
         // Try to initialize again with different settings - should throw
@@ -353,6 +363,9 @@ void main() {
           () => app.firestore(
             settings: const googleapis_firestore.Settings(
               host: 'different:9090',
+              environmentOverride: {
+                'FIRESTORE_EMULATOR_HOST': 'localhost:8080',
+              },
             ),
           ),
           throwsA(isA<FirebaseAppException>()),
@@ -398,7 +411,7 @@ void main() {
           ),
         );
         expect(
-          () => app.firestore(),
+          () => app.firestore(settings: mockFirestoreSettings),
           throwsA(
             isA<FirebaseAppException>().having(
               (e) => e.code,
