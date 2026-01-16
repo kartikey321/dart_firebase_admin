@@ -147,9 +147,6 @@ void main() {
           // The Firestore instance should have credentials set from the app
           // This test will FAIL initially because credential extraction is not implemented
           expect(db, isNotNull);
-
-          // TODO: Add more specific assertions once we can inspect the settings
-          // For now, this is a smoke test that it doesn't crash
         });
 
         test(
