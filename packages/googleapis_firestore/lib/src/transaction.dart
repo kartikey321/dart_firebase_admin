@@ -122,7 +122,10 @@ class Transaction {
   /// ```
   Future<QuerySnapshot<T>> getQuery<T>(Query<T> query) async {
     if (_writeBatch != null && _writeBatch._operations.isNotEmpty) {
-      throw Exception(readAfterWriteErrorMsg);
+      throw FirestoreException(
+        FirestoreClientErrorCode.failedPrecondition,
+        readAfterWriteErrorMsg,
+      );
     }
     return _withLazyStartedTransaction<Query<T>, QuerySnapshot<T>>(
       query,
