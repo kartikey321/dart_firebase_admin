@@ -267,8 +267,6 @@ void main() {
       //   await FirebaseApp.deleteApp(app);
       // });
 
-      // TODO(demolaf): fails in CI in PRs because of CREDS as
-      //  gcloud auth application-default login fails
       test('reuses same client on subsequent calls', () {
         runZoned(() async {
           final mockClient = MockAuthClient();
@@ -309,16 +307,12 @@ void main() {
         }
       });
 
-      // TODO(demolaf): fails in CI in PRs because of CREDS as
-      //  gcloud auth application-default login fails
       test('appCheck returns AppCheck instance', () {
         final appCheck = app.appCheck();
         expect(appCheck, isA<AppCheck>());
         expect(identical(appCheck.app, app), isTrue);
       });
 
-      // TODO(demolaf): fails in CI in PRs because of CREDS as
-      //  gcloud auth application-default login fails
       test('appCheck returns cached instance', () {
         final appCheck1 = app.appCheck();
         final appCheck2 = app.appCheck();
@@ -475,8 +469,6 @@ void main() {
         expect(app.isDeleted, isTrue);
       });
 
-      // TODO(demolaf): fails in CI in PRs because of CREDS as
-      //  gcloud auth application-default login fails
       test('closes HTTP client when created by SDK', () {
         runZoned(() async {
           final mockClient = MockAuthClient();
