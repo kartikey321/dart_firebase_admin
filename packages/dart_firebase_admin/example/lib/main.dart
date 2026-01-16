@@ -2,6 +2,7 @@ import 'package:dart_firebase_admin/auth.dart';
 import 'package:dart_firebase_admin/dart_firebase_admin.dart';
 import 'package:dart_firebase_admin/functions.dart';
 import 'package:dart_firebase_admin/messaging.dart';
+import 'firestore_example.dart';
 
 Future<void> main() async {
   final admin = FirebaseApp.initializeApp();
@@ -54,69 +55,6 @@ Future<void> authExample(FirebaseApp admin) async {
 
   if (user != null) {
     print('Fetched user email: ${user.email}');
-  }
-}
-
-// ignore: unreachable_from_main
-Future<void> firestoreExample(FirebaseApp admin) async {
-  print('\n### Firestore Example ###\n');
-
-  // Example 1: Using the default database
-  print('> Using default database...\n');
-  final firestore = admin.firestore();
-
-  try {
-    final collection = firestore.collection('users');
-    await collection.doc('123').set({'name': 'John Doe', 'age': 27});
-    final snapshot = await collection.get();
-    for (final doc in snapshot.docs) {
-      print('> Document data: ${doc.data()}');
-    }
-  } catch (e) {
-    print('> Error setting document: $e');
-  }
-
-  // Example 2: Using a named database (multi-database support)
-  print('\n> Using named database "my-database"...\n');
-  final namedFirestore = admin.firestore(databaseId: 'my-database');
-
-  try {
-    final collection = namedFirestore.collection('products');
-    await collection.doc('product-1').set({
-      'name': 'Widget',
-      'price': 19.99,
-      'inStock': true,
-    });
-    print('> Document written to named database\n');
-
-    final doc = await collection.doc('product-1').get();
-    if (doc.exists) {
-      print('> Retrieved from named database: ${doc.data()}');
-    }
-  } catch (e) {
-    print('> Error with named database: $e');
-  }
-
-  // Example 3: Using multiple databases simultaneously
-  print('\n> Demonstrating multiple database access...\n');
-  try {
-    final defaultDb = admin.firestore();
-    final analyticsDb = admin.firestore(databaseId: 'analytics-db');
-
-    await defaultDb.collection('users').doc('user-1').set({
-      'name': 'Alice',
-      'email': 'alice@example.com',
-    });
-
-    await analyticsDb.collection('events').doc('event-1').set({
-      'type': 'page_view',
-      'timestamp': DateTime.now().toIso8601String(),
-      'userId': 'user-1',
-    });
-
-    print('> Successfully wrote to multiple databases');
-  } catch (e) {
-    print('> Error with multiple databases: $e');
   }
 }
 
